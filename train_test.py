@@ -35,7 +35,7 @@ parser.add_argument(
     '--basenet', default='weights/vgg16_reducedfc.pth', help='pretrained base model')
 parser.add_argument('--jaccard_threshold', default=0.5,
                     type=float, help='Min Jaccard index for matching')
-parser.add_argument('-b', '--batch_size', default=32,
+parser.add_argument('-b', '--batch_size', default=16,
                     type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4,
                     type=int, help='Number of workers used in dataloading')
@@ -50,23 +50,23 @@ parser.add_argument('--resume_net', default=False, help='resume net for retraini
 parser.add_argument('--resume_epoch', default=0,
                     type=int, help='resume iter for retraining')
 
-parser.add_argument('-max', '--max_epoch', default=300,
+parser.add_argument('-max', '--max_epoch', default=150,
                     type=int, help='max epoch for retraining')
 parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
-parser.add_argument('-we', '--warm_epoch', default=1,
+parser.add_argument('-we', '--warm_epoch', default=0,
                     type=int, help='max epoch for retraining')
 parser.add_argument('--gamma', default=0.1,
                     type=float, help='Gamma update for SGD')
 parser.add_argument('--log_iters', default=True,
                     type=bool, help='Print the loss at each iteration')
-parser.add_argument('--save_folder', default='weights/',
+parser.add_argument('--save_folder', default='/Data_HDD/shuyiqu/ssd_log/',
                     help='Location to save checkpoint models')
-parser.add_argument('--date', default='1213')
-parser.add_argument('--save_frequency', default=10)
+parser.add_argument('--date', default='1121')
+parser.add_argument('--save_frequency', default=50)
 parser.add_argument('--retest', default=False, type=bool,
                     help='test cache results')
-parser.add_argument('--test_frequency', default=10)
+parser.add_argument('--test_frequency', default=5)
 parser.add_argument('--visdom', default=False, type=str2bool, help='Use visdom to for loss visualization')
 parser.add_argument('--send_images_to_visdom', type=str2bool, default=False,
                     help='Sample a random image from each 10th batch, send it to visdom after augmentations step')
@@ -83,7 +83,10 @@ log_file_path = save_folder + '/train' + time.strftime('_%Y-%m-%d-%H-%M', time.l
 if args.dataset == 'VOC':
     train_sets = [('2007', 'trainval'), ('2012', 'trainval')]
     cfg = (VOC_300, VOC_512)[args.size == '512']
-else:
+elif args.dataset == 'COCO14':
+    train_sets = [('2014', 'train'), ('2014', 'valminusminival')]
+    cfg = (COCO_300, COCO_512)[args.size == '512']
+elif args.dataset == 'COCO17':
     train_sets = [('2017', 'train')]
     cfg = (COCO_300, COCO_512)[args.size == '512']
 
@@ -91,16 +94,16 @@ if args.version == 'RFB_vgg':
     from models.RFB_Net_vgg import build_net
 elif args.version == 'RFB_E_vgg':
     from models.RFB_Net_E_vgg import build_net
-elif args.version == 'RFB_mobile':
-    from models.RFB_Net_mobile import build_net
-
-    cfg = COCO_mobile_300
 elif args.version == 'SSD_vgg':
     from models.SSD_vgg import build_net
 elif args.version == 'FSSD_vgg':
     from models.FSSD_vgg import build_net
-elif args.version == 'FRFBSSD_vgg':
-    from models.FRFBSSD_vgg import build_net
+elif args.version == 'MFSSD_vgg_v3':
+    from models.MFSSD_vgg_v3 import build_net
+elif args.version == 'MFSSD_vgg_v2':
+    from models.MFSS_vgg_v2 import build_net
+elif args.version == 'MFSSD_vgg':
+    from models.MFSSD_vgg import build_net
 else:
     print('Unkown version!')
 rgb_std = (1, 1, 1)
@@ -111,7 +114,7 @@ elif 'mobile' in args.version:
     rgb_means = (103.94, 116.78, 123.68)
 
 p = (0.6, 0.2)[args.version == 'RFB_mobile']
-num_classes = (21, 81)[args.dataset == 'COCO']
+num_classes = (81, 21)[args.dataset == 'VOC']
 batch_size = args.batch_size
 weight_decay = 0.0005
 gamma = 0.1
@@ -145,7 +148,7 @@ else:
     net.load_state_dict(new_state_dict)
 
 if args.ngpu > 1:
-    net = torch.nn.DataParallel(net, device_ids=list(range(args.ngpu)))
+    net = torch.nn.DataParallel(net)
 
 if args.cuda:
     net.to("cuda")
@@ -168,11 +171,18 @@ if args.dataset == 'VOC':
         VOCroot, [('2007', 'test')], None, AnnotationTransform())
     train_dataset = VOCDetection(VOCroot, train_sets, preproc(
         img_dim, rgb_means, rgb_std, p), AnnotationTransform())
-elif args.dataset == 'COCO':
+elif args.dataset == 'COCO17':
     testset = COCODetection(
         COCOroot, [('2017', 'val')], None)
     train_dataset = COCODetection(COCOroot, train_sets, preproc(
         img_dim, rgb_means, rgb_std, p))
+elif args.dataset == 'COCO14':
+    testset = COCODetection(
+        #COCOroot, [('2015', 'test-dev')], None)
+        COCOroot, [('2014', 'minival')], None)
+    train_dataset = COCODetection(COCOroot, train_sets, preproc(
+        img_dim, rgb_means, rgb_std, p))
+
 else:
     print('Only VOC and COCO are supported now!')
     exit()
@@ -237,7 +247,7 @@ def train():
             if epoch % args.save_frequency == 0 and epoch > 0:
                 torch.save(net.state_dict(), os.path.join(save_folder, args.version + '_' + args.dataset + '_epoches_' +
                                                           repr(epoch) + '.pth'))
-            if epoch % args.test_frequency == 0 and epoch > 0:
+            if epoch % args.test_frequency == 0 and epoch >= 200: #100 for COCO
                 net.eval()
                 top_k = (300, 200)[args.dataset == 'COCO']
                 if args.dataset == 'VOC':
