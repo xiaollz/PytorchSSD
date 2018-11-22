@@ -60,7 +60,7 @@ parser.add_argument('--gamma', default=0.1,
                     type=float, help='Gamma update for SGD')
 parser.add_argument('--log_iters', default=True,
                     type=bool, help='Print the loss at each iteration')
-parser.add_argument('--save_folder', default='/Data_HDD/shuyiqu/ssd_log/',
+parser.add_argument('--save_folder', default='/path2savefloder',
                     help='Location to save checkpoint models')
 parser.add_argument('--date', default='1121')
 parser.add_argument('--save_frequency', default=50)
