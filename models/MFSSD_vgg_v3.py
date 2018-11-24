@@ -36,7 +36,7 @@ class BasicConv(nn.Module):
             x = F.interpolate(x, size=(self.up_size, self.up_size), mode='bilinear', align_corners=True)
         return x
 
-def add_extras(cfg, i, batch_norm=False, size=300):
+def add_extras(cfg, i, batch_norm=False, size=512):
     # Extra layers added to VGG for feature scaling
     layers = []
     in_channels = i
@@ -75,7 +75,7 @@ def feature_transform_module_2(size):
     if size ==  300:
         up_size = 19
     elif size == 512:
-        up_size = 38
+        up_size = 32
 
     layers = []
     # fc_7
@@ -96,7 +96,7 @@ def feature_transform_module_3(size):
     if size ==  300:
         up_size = 10
     elif size == 512:
-        up_size = 19
+        up_size = 16
 
     layers = []
     # conv6_2
@@ -156,7 +156,7 @@ def pyramid_feature_extractor_3(size):
                   BasicConv(256, 256, kernel_size=3, stride=1, padding=0),
                   BasicConv(256, 256, kernel_size=3, stride=1, padding=0)]
     elif size == 512:
-        layers = [BasicConv(256 * 3, 256, kernel_size=3, stride=1, padding=1), # may 512->256
+        layers = [BasicConv(128 * 3, 256, kernel_size=3, stride=1, padding=1), # may 512->256
                   #BasicConv(512, 512, kernel_size=3, stride=2, padding=1), \
                   #BasicConv(512, 256, kernel_size=3, stride=2, padding=1),
                   BasicConv(256, 256, kernel_size=3, stride=2, padding=1), \
@@ -191,7 +191,7 @@ mbox = {
 #    '512': [512, 512, 256, 256, 256, 256, 256]}
 fea_channels = {
     '300': [512, 1024, 768, 768, 768, 768],
-    '512': [512, 512, 256, 256, 256, 256, 256]}
+    '512': [512, 1024, 768, 768, 768, 768, 768]}
 
 class SELayer(nn.Module):
     def __init__(self, channel, reduction=16):
@@ -237,12 +237,16 @@ class FSSD(nn.Module):
 
         self.softmax = nn.Softmax()
 
+        # se for 300 size
         self.se1 = SELayer(512, 16)
         self.se2 = SELayer(1024, 16)
         self.se3 = SELayer(768, 16)
         self.se4 = SELayer(768, 16)
         self.se5 = SELayer(768, 16)
         self.se6 = SELayer(768, 16)
+        # se for 512
+        self.se7 = SELayer(768, 16)
+
         #self.cbam = CBAM(planes, 16)
 
     def get_pyramid_feature(self, x):
@@ -337,6 +341,10 @@ class FSSD(nn.Module):
         concat_fea = torch.cat([pyramid_fea_1[5], pyramid_fea_2[4], pyramid_fea_3[3]], 1)
         pyramid_fea_final.append(self.se6(concat_fea))
 
+        # for size 512
+        concat_fea = torch.cat([pyramid_fea_1[6], pyramid_fea_2[5], pyramid_fea_3[4]], 1)
+        pyramid_fea_final.append(self.se7(concat_fea))
+        
         #ipdb.set_trace()
         return pyramid_fea_final
 
